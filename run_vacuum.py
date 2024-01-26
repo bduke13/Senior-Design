@@ -18,7 +18,7 @@ def control_vacuum(vacuum_on, the_bot):
     Control the vacuum: vacuum_on is either True (turn on) or False (turn off)
     """
     # Bit 1 controls the vacuum
-    motor_byte = 0b00000010 if vacuum_on else 0
+    motor_byte = 0b000001101 if vacuum_on else 0
     # Pack the motor_byte into a byte format
     data = struct.unpack('B', struct.pack('B', motor_byte))
     the_bot.SCI.write(138, data)

@@ -3,11 +3,11 @@
 ##############################################
 import time
 from pycreate2 import Create2
-
+from create2_port_definition import port_path
 # Initialize the robot
-port = '/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DN026CMI-if00-port0'
 
-bot = Create2(port)
+
+bot = Create2(port_path)
 
 # Start the robot
 bot.start()

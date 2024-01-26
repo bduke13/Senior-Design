@@ -1,9 +1,9 @@
 from  pycreate2 import Create2
 import time
+from create2_port_definition import port_path
 
-# Create a Create2.
-port = "/dev/ttyUSB0"  # where is your serial port?
-bot = Create2(port)
+
+bot = Create2(port_path)
 
 # Start the Create 2
 bot.start()

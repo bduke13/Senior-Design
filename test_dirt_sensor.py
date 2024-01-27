@@ -14,11 +14,6 @@ bot = pycreate2.Create2(port=port, baud=baud['default'])
 bot.start()
 bot.safe()
 
-# Turn on the vacuum
-bot.motors(brushes=pycreate2.MotorState.OFF, vacuum=pycreate2.MotorState.ON)
-
-# Sleep for a bit to let the vacuum run
-time.sleep(2)
 
 # Request Dirt Detect sensor data
 # The sensor ID for Dirt Detect can be found in the pycreate2 documentation or Open Interface Spec
@@ -26,9 +21,6 @@ sensor_state = bot.get_sensors()
 dirt_detect = sensor_state.dirt_detect
 
 print("Dirt Detect Sensor Value:", dirt_detect)
-
-# Turn off the vacuum
-bot.motors(brushes=pycreate2.MotorState.OFF, vacuum=pycreate2.MotorState.OFF)
 
 # Stop the robot
 bot.stop()

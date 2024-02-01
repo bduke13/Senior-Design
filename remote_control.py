@@ -49,7 +49,7 @@ def main(stdscr):
             elif key == ord('s'):
                 bot.drive_direct(0, 0)
                 stdscr.addstr("Stopping robot\n")
-            elif key == ord('a'):
+            elif key == ord('a='):
                 bot.drive_direct(drive_speed, -drive_speed)
                 stdscr.addstr("Turning right\n")
             elif key == ord('x'):

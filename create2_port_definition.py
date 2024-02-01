@@ -1,1 +1,0 @@
-port_path = '/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DN026CMI-if00-port0'

@@ -4,20 +4,21 @@
 $ ./record_measurments.py out.txt'''
 import sys
 from rplidar import RPLidar
-from port_description import port_name
+from rplidar_port_description import port_name
+
 
 PORT_NAME = port_name
 
 
-def run():
+def run(path):
     '''Main function'''
     lidar = RPLidar(PORT_NAME)
-    #outfile = open(path, 'w')
+    outfile = open(path, 'w')
     try:
         print('Recording measurments... Press Crl+C to stop.')
         for measurment in lidar.iter_measurments():
             line = '\t'.join(str(v) for v in measurment)
-            print(line + '\n')
+            outfile.write(line + '\n')
     except KeyboardInterrupt:
         print('Stoping.')
     lidar.stop()
@@ -25,4 +26,4 @@ def run():
     outfile.close()
 
 if __name__ == '__main__':
-    run()
+    run(sys.argv[1])

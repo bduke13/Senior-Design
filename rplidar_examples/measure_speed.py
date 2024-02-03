@@ -2,8 +2,10 @@
 '''Measures sensor scanning speed'''
 from rplidar import RPLidar
 import time
+from rplidar_port_description import port_name
 
-PORT_NAME = '/dev/ttyUSB0'
+
+PORT_NAME = port_name
 
 def run():
     '''Main function'''

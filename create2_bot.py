@@ -16,7 +16,7 @@ class MyCreate2(Create2):
         """
         Control the vacuum: vacuum_on is either True (turn on) or False (turn off).
         """
-        motor_byte = 13 if vacuum_on else 0
+        motor_byte = 7 if vacuum_on else 0
         data = struct.unpack('B', struct.pack('B', motor_byte))
         self.SCI.write(138, data)
     

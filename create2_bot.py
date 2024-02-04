@@ -26,13 +26,11 @@ class MyCreate2(Create2):
         self.drive_stop()
         self.stop()
         self.close()
-        # Add any additional cleanup steps here...
 
     # Modify __del__ to call shutdown, or better yet, ensure shutdown is called explicitly
     def __del__(self):
         self.shutdown()
         
-
     def control_vacuum(self, vacuum_on):
         """
         Control the vacuum: vacuum_on is either True (turn on) or False (turn off).
@@ -46,7 +44,6 @@ class MyCreate2(Create2):
         Fetches the latest sensor data from the robot and updates the internal storage.
         """
         sensor_state = self.get_sensors()
-        print(sensor_state)
         self.bump_sensors['left'] = sensor_state.bumps_wheeldrops.bump_left
         self.bump_sensors['right'] = sensor_state.bumps_wheeldrops.bump_right
         self.dirt_detect = sensor_state.dirt_detect

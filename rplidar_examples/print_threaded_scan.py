@@ -43,7 +43,7 @@ if __name__ == '__main__':
     lidar_thread = LidarThread(PORT_NAME)
     lidar_thread.start()
 
-    # Main program loop
+    # Main program loop 
     try:
         while True:
             # Do other things here

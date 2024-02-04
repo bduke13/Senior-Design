@@ -1,15 +1,10 @@
-#!/usr/bin/env python3
-'''Prints out data from RPLIDAR continuously in a separate thread and allows retrieving the last scan.'''
 from rplidar import RPLidar
-from rplidar_port_description import port_name
 import threading
-import time
-
-PORT_NAME = port_name
 
 class LidarThread:
     def __init__(self, port_name):
         self.lidar = RPLidar(port_name)
+        print(self.lidar.get_health())
         self.last_scan = None
         self.running = False
         self.thread = threading.Thread(target=self.update_scan, daemon=True)
@@ -38,20 +33,3 @@ class LidarThread:
 
     def get_last_scan(self):
         return self.last_scan
-
-if __name__ == '__main__':
-    lidar_thread = LidarThread(PORT_NAME)
-    lidar_thread.start()
-
-    # Main program loop
-    try:
-        while True:
-            # Do other things here
-            time.sleep(1)  # Simulate work
-            last_scan = lidar_thread.get_last_scan()
-            if last_scan is not None:
-                print("Latest scan data:", last_scan)  # Or process it as needed
-    except KeyboardInterrupt:
-        print("Program interrupted by user, stopping LIDAR thread...")
-    finally:
-        lidar_thread.stop()

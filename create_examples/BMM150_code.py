@@ -6,7 +6,7 @@ device = bmm150.BMM150()  # Bus number will default to 1
 
 
 
-for i in range(1000):
+while True:
     x, y, z = device.read_mag_data()
 
     heading_rads = math.atan2(x, y)

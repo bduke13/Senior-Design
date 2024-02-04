@@ -1,17 +1,21 @@
+import threading
 import bmm150
 import math
 from pycreate2 import Create2
 import struct
+from lidar_thread import LidarThread
 
 class MyCreate2(Create2):
-    DEFAULT_PORT_PATH = '/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DN026CMI-if00-port0'
-    
-    def __init__(self, port=DEFAULT_PORT_PATH):
-        super().__init__(port)
+    CREATE2_DEFAULT_PORT = '/dev/serial/by-id/usb-FTDI_FT231X_USB_UART_DN026CMI-if00-port0'
+    RPLIDAR_DEFAULT_PORT = '/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0'
+
+    def __init__(self, create2_port=CREATE2_DEFAULT_PORT, rplidar_port=RPLIDAR_DEFAULT_PORT):
+        super().__init__(create2_port)
         self.start()  # Start the robot
         self.safe()   # Set the robot to 'safe' mode
         self.bmm150_device = bmm150.BMM150()  # Initialize the BMM150 device here
-    
+        self.lidar_thread = LidarThread(rplidar_port)
+
     def control_vacuum(self, vacuum_on):
         """
         Control the vacuum: vacuum_on is either True (turn on) or False (turn off).
@@ -45,11 +49,10 @@ class MyCreate2(Create2):
         heading_rads = math.atan2(x, y)
         heading_degrees = math.degrees(heading_rads)
         heading_degrees = heading_degrees if heading_degrees > 0 else heading_degrees + 360
-
-        # Optionally print the magnetic field data and heading
-        print(f"X : {x:.2f}µT")
-        print(f"Y : {y:.2f}µT")
-        print(f"Z : {z:.2f}µT")
-        print(f"Heading: {heading_degrees:.2f}°")
-
         return heading_degrees
+
+    def get_lidar_data(self):
+        """
+        Retrieves the last scan data from the LIDAR thread.
+        """
+        return self.lidar_thread.get_last_scan()

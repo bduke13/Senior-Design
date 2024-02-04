@@ -8,7 +8,6 @@ def main():
     
     # Initialize and start the LidarThread
     lidar_thread = LidarThread(rplidar_port)
-    lidar_thread.start()
     
     print("LIDAR thread started. Printing last scan every second.")
     
@@ -25,8 +24,8 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         print("Stopping LIDAR thread...")
+    finally:
         lidar_thread.stop()
-        print("LIDAR thread stopped.")
 
 if __name__ == "__main__":
     main()

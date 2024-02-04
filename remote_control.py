@@ -1,21 +1,20 @@
 import curses
 import threading
 import pygame
-from math import cos, sin, pi, floor
+from math import cos, sin, pi
 import os
 from create2_bot import MyCreate2  # Adjust this import as necessary
 import time
-from rplidar import RPLidar
+# from rplidar import RPLidar
 
-# Initialize Pygame for graphics display
-os.putenv('SDL_FBDEV', '/dev/fb1')
-pygame.init()
-lcd = pygame.display.set_mode((320, 240))
-pygame.mouse.set_visible(False)
-max_distance = 0
+def init_graphics():
+    os.putenv('SDL_FBDEV', '/dev/fb1')
+    pygame.init()
+    lcd = pygame.display.set_mode((320, 240))
+    pygame.mouse.set_visible(False)
+    return lcd
 
-def process_data(data):
-    global max_distance
+def process_data(data, lcd, max_distance):
     lcd.fill((0, 0, 0))
     if data:
         for (quality, angle, distance) in data:
@@ -28,9 +27,15 @@ def process_data(data):
                 lcd.set_at(point, pygame.Color(255, 255, 255))
     pygame.display.update()
 
-def main(stdscr, bot):
-    drive_speed = 5
+def main(stdscr, bot, use_graphics=True):
+    drive_speed = 100
     vacuum_on = False
+    max_distance = 0
+    lcd = None
+
+    if use_graphics:
+        lcd = init_graphics()
+
     curses.curs_set(0)  # Turn off cursor visibility
     stdscr.nodelay(True)  # Don't block I/O calls
 
@@ -44,12 +49,11 @@ def main(stdscr, bot):
 
     while True:
         try:
-            # Clear previous sensor data lines
             stdscr.clear()
-            # Redisplay the commands
             for command in commands:
                 stdscr.addstr(command + "\n")
              # Display the sensor states and other information
+            bot.update_sensors()
             bump_left, bump_right = bot.get_bump_sensors()
             dirt_detect = bot.get_dirt_sensor()
             heading = bot.read_heading()  # Assuming this method exists in MyCreate2
@@ -80,23 +84,27 @@ def main(stdscr, bot):
             elif key == ord('q'):
                 break  # Exit the loop
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False  # Or however you choose to handle a quit event
+            if use_graphics:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        break  # Exit the loop if graphics window is closed
 
-            # Process and display LIDAR data
-            last_scan = bot.get_lidar_data()
-            process_data(last_scan)
-
+                # Process and display LIDAR data if graphics are enabled
+                last_scan = bot.get_lidar_data()  # Assuming this method exists
+                process_data(last_scan, lcd, max_distance)
 
         except Exception as e:
             stdscr.addstr(0, 0, str(e))
             break
 
+
 if __name__ == '__main__':
     try:
         bot = MyCreate2()  # Initialize robot with LIDAR
-        curses.wrapper(main, bot)
+        # Add a flag or argument to determine whether to use graphics or not
+        use_graphics = True  # Set this based on your requirements or command line arguments
+        curses.wrapper(main, bot, use_graphics)
     finally:
+        if use_graphics:
+            pygame.quit()  # Quit Pygame if it was initializedv
         bot.__del__()  # Ensure proper shutdown
-        pygame.quit()  # Quit Pygame

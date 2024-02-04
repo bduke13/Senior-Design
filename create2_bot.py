@@ -1,4 +1,3 @@
-import threading
 import bmm150
 import math
 from pycreate2 import Create2
@@ -11,10 +10,28 @@ class MyCreate2(Create2):
 
     def __init__(self, create2_port=CREATE2_DEFAULT_PORT, rplidar_port=RPLIDAR_DEFAULT_PORT):
         super().__init__(create2_port)
-        self.start()  # Start the robot
-        self.safe()   # Set the robot to 'safe' mode
-        self.bmm150_device = bmm150.BMM150()  # Initialize the BMM150 device here
+        print(f'Robot starting')
+        self.start()
+        self.full()
+        self.bmm150_device = bmm150.BMM150()
         self.lidar_thread = LidarThread(rplidar_port)
+        # Initialize sensor data storage
+        self.bump_sensors = {'left': False, 'right': False}
+        self.dirt_detect = 0
+
+    def shutdown(self):
+        """Shuts down the robot and cleans up resources."""
+        print("Shutting down robot and cleaning up resources.")
+        self.lidar_thread.stop()
+        self.drive_stop()
+        self.stop()
+        self.close()
+        # Add any additional cleanup steps here...
+
+    # Modify __del__ to call shutdown, or better yet, ensure shutdown is called explicitly
+    def __del__(self):
+        self.shutdown()
+        
 
     def control_vacuum(self, vacuum_on):
         """
@@ -24,22 +41,27 @@ class MyCreate2(Create2):
         data = struct.unpack('B', struct.pack('B', motor_byte))
         self.SCI.write(138, data)
     
-    def get_dirt_sensor(self):
+    def update_sensors(self):
         """
-        Gets the current value of the dirt detect sensor.
+        Fetches the latest sensor data from the robot and updates the internal storage.
         """
         sensor_state = self.get_sensors()
-        dirt_detect = sensor_state.dirt_detect
-        return dirt_detect
+        print(sensor_state)
+        self.bump_sensors['left'] = sensor_state.bumps_wheeldrops.bump_left
+        self.bump_sensors['right'] = sensor_state.bumps_wheeldrops.bump_right
+        self.dirt_detect = sensor_state.dirt_detect
+
+    def get_dirt_sensor(self):
+        """
+        Returns the current value of the dirt detect sensor from internal storage.
+        """
+        return self.dirt_detect
 
     def get_bump_sensors(self):
         """
-        Gets the current values of the left and right bump sensors.
+        Returns the current values of the left and right bump sensors from internal storage.
         """
-        sensor_state = self.get_sensors()
-        bump_left = sensor_state.bumps_wheeldrops.bump_left
-        bump_right = sensor_state.bumps_wheeldrops.bump_right
-        return bump_left, bump_right
+        return self.bump_sensors['left'], self.bump_sensors['right']
 
     def read_heading(self):
         """

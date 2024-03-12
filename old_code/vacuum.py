@@ -18,8 +18,8 @@ def run_vacuum():
     print("Vacuum is now on.")
     
     # Wait for 2 seconds
-    time.sleep(2)
-    
+    time.sleep(0.5)
+    print(robot.get_sensors())
     # Turn off the vacuum
     robot.control_vacuum(False)
     print("Vacuum is now off.")

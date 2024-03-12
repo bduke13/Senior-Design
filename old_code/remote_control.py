@@ -27,7 +27,7 @@ def process_data(data, lcd, max_distance):
                 lcd.set_at(point, pygame.Color(255, 255, 255))
     pygame.display.update()
 
-def main(stdscr, bot, use_graphics=True):
+def main(stdscr, bot, use_graphics=False):
     drive_speed = 100
     vacuum_on = False
     max_distance = 0
@@ -52,17 +52,22 @@ def main(stdscr, bot, use_graphics=True):
             stdscr.clear()
             for command in commands:
                 stdscr.addstr(command + "\n")
-             # Display the sensor states and other information
+            # Display the sensor states and other information
             bot.update_sensors()
-            bump_left, bump_right = bot.get_bump_sensors()
-            dirt_detect = bot.get_dirt_sensor()
-            heading = bot.read_heading()  # Assuming this method exists in MyCreate2
-            stdscr.addstr(f"Speed: {drive_speed}\n")
-            stdscr.addstr(f"Bump Left: {bump_left}, Bump Right: {bump_right}\n")
-            stdscr.addstr(f"Dirt Detect: {dirt_detect}\n")
-            stdscr.addstr(f"Heading: {heading:.2f}°\n")
+            #bump_left, bump_right = bot.get_bump_sensors()
+            #dirt_detect = bot.get_dirt_sensor()
+            # heading = bot.read_heading()  # Assuming thisv method exists in MyCreate2
+            stdscr.addstr(f"Data: {bot.data}\n")
 
-            # Existing code for handling key presses and LIDAR data processing
+            #stdscr.addstr(f"Speed: {drive_speed}\n")a
+            #stdscr.addstr(f"Bump Left: {bump_left}, Bump Right: {bump_right}\n")
+            #stdscr.addstr(f"Dirt Detect: {dirt_detect}\n")
+            # stdscr.addstr(f"Lidar: {bot.get_lidar_data()}\n")
+            stdscr.addstr(f"Encoders: {bot.get_encoder_counts()}\n")
+            stdscr.addstr(f"Rotation: {bot.get_total_rotation()}\n")
+
+
+            # Existing code for handling key presses and LIDAR dxata processing
             key = stdscr.getch()
             if key == ord('w'):
                 bot.drive_direct(drive_speed, drive_speed)
@@ -97,14 +102,14 @@ def main(stdscr, bot, use_graphics=True):
             stdscr.addstr(0, 0, str(e))
             break
 
+        time.sleep(0.01)
+
 
 if __name__ == '__main__':
+    use_graphics = False # Add a flag or argument to determine whether to use graphics or not
     try:
         bot = MyCreate2()  # Initialize robot with LIDAR
-        # Add a flag or argument to determine whether to use graphics or not
-        use_graphics = True  # Set this based on your requirements or command line arguments
         curses.wrapper(main, bot, use_graphics)
     finally:
         if use_graphics:
             pygame.quit()  # Quit Pygame if it was initializedv
-        bot.__del__()  # Ensure proper shutdown

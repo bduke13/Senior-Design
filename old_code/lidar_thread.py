@@ -50,7 +50,10 @@ class LidarThread:
         except KeyboardInterrupt:
             print("Stopping RPLIDAR due to an interrupt...")
         finally:
-            self.stop()
+            self.lidar.stop_motor()
+            self.lidar.stop()
+            self.lidar.disconnect()
+            print("RPLIDAR stopped and disconnected.")
 
     def get_last_scan(self):
         """

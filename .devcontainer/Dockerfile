@@ -55,3 +55,5 @@ RUN echo "source /home/${USERNAME}/ros2_ws/install/setup.bash" >> ~/.bashrc
 RUN sudo apt update
 
 RUN sudo apt install -y ros-humble-rviz2
+RUN sudo apt install -y ros-humble-teleop-twist-keyboard
+RUN sudo apt install -y ros-humble-irobot-create-msgs

@@ -1,0 +1,9 @@
+#goal definition
+float32 degrees
+float32 speed
+---
+#result definition
+bool success
+---
+#feedback
+float32 current_angle

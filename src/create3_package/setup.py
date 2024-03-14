@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'cliff_sensors_listener = create3_package.cliff_sensors:main',
         ],
     },
 )

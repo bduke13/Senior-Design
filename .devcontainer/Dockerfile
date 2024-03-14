@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y \
+    ros-humble-rqt \
+    ros-humble-rqt-common-plugins \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install numpy pandas matplotlib
 
 # Initialize rosdep

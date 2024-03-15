@@ -16,7 +16,10 @@ RUN apt-get update && apt-get install -y \
     ros-humble-rqt-common-plugins \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install numpy pandas matplotlib
+RUN pip3 install numpy pandas matplotlib
+
+# Create a symbolic link for python to python3
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Initialize rosdep
 RUN rosdep init && rosdep update
@@ -31,7 +34,7 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
 
 # Switch from root to user
-USER $USERNAME
+#USER $USERNAME
 
 # Add user to video group to allow access to webcam
 RUN sudo usermod --append --groups video $USERNAME
@@ -58,7 +61,6 @@ RUN /bin/bash -c '. /opt/ros/humble/setup.bash; colcon build --symlink-install'
 RUN echo "source /home/${USERNAME}/ros2_ws/install/setup.bash" >> ~/.bashrc
 
 RUN sudo apt update
-
 RUN sudo apt install -y ros-humble-rviz2
 RUN sudo apt install -y ros-humble-teleop-twist-keyboard
 RUN sudo apt install -y ros-humble-irobot-create-msgs

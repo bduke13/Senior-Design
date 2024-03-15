@@ -21,6 +21,9 @@ setup(
     entry_points={
         'console_scripts': [
             'cliff_sensors_listener = create3_package.cliff_sensors:main',
+            'pose_listener = create3_package.odom_sensor:main',
+            'bump_listener = create3_package.bump_sensor:main',
+            'scan_listener = create3_package.scan_sensor:main'
         ],
     },
 )

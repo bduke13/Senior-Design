@@ -3,9 +3,12 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import LaserScan
 from irobot_create_msgs.msg import HazardDetectionVector, IrIntensityVector
+from irobot_create_msgs.action import RotateAngle
 from nav_msgs.msg import Odometry
+from rclpy.action import ActionClient
 import threading
 import time
+import asyncio 
 
 class CombinedSensorSubscriber(Node):
     def __init__(self):
@@ -13,16 +16,41 @@ class CombinedSensorSubscriber(Node):
         qos_profile = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.lock = threading.Lock()
 
-        self.scan_data = None # 720 long list of distances
-        self.ground_reward = None # boolean whether we see tinfoil
-        self.bump_detection = False # boolean whether we have any bumper in the hazard detections
-        self.odom_position = None # position of robot
-        self.odom_orientation = None # angle of robot
+        self.scan_data = None
+        self.ground_reward = None
+        self.bump_detection = False
+        self.odom_position = None
+        self.odom_orientation = None
 
         self.create_subscription(LaserScan, '/scan', self.scan_callback, qos_profile)
         self.create_subscription(IrIntensityVector, '/cliff_intensity', self.cliff_intensity_callback, qos_profile)
         self.create_subscription(HazardDetectionVector, '/hazard_detection', self.hazard_detection_callback, qos_profile)
         self.create_subscription(Odometry, '/odom', self.odom_callback, qos_profile)
+
+        # Initialize action client
+        #self.action_client = ActionClient(self, RotateAngle, '/rotate_angle')
+
+    # async def send_rotate_angle_goal(self, angle, max_rotation_speed):
+    #     goal_msg = RotateAngle.Goal()
+    #     goal_msg.angle = angle
+    #     goal_msg.max_rotation_speed = max_rotation_speed
+
+    #     self.get_logger().info('Sending goal request...')
+    #     send_goal_future = self.action_client.send_goal_async(goal_msg)
+    #     rclpy.spin_until_future_complete(self, send_goal_future)
+    #     goal_handle = send_goal_future.result()
+
+    #     if not goal_handle.accepted:
+    #         self.get_logger().info('Goal rejected :(')
+    #         return
+
+    #     self.get_logger().info('Goal accepted :)')
+
+    #     # Await the result
+    #     get_result_future = goal_handle.get_result_async()
+    #     rclpy.spin_until_future_complete(self, get_result_future)
+    #     result = get_result_future.result().result
+    #     self.get_logger().info(f'Goal result: {result}')
 
     def scan_callback(self, msg):
         with self.lock:
@@ -71,15 +99,17 @@ def run_node(node):
 
 def main():
     rclpy.init()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     node = CombinedSensorSubscriber()
     node_thread = threading.Thread(target=run_node, args=(node,), daemon=True)
     node_thread.start()
+    print('spun up and ready')
 
     while True:
         print(node.get_bump_detection())
-        time.sleep(0.01)
-
-
 
 if __name__ == '__main__':
     main()

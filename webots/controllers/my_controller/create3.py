@@ -1,24 +1,20 @@
 from networks import *
-import _pickle as pickle
+import pickle
 import os
 from astropy.stats import circmean, circvar
 from matplotlib.cm import get_cmap
 import numpy as np
 import tkinter as tk
 from tkinter import messagebox
-from controller import Supervisor
+#from controller import Supervisor
 import rclpy
 import threading
+import asyncio
 import time
-from sensor_subscriber import CombinedSensorSubscriber, run_node
+from sensor_subscriber import CombinedSensorSubscriber
+from turning_node import RotateAngleClient
+from driving_node import CmdVelPublisher
 
-# initialize the subscriber for sensor data
-rclpy.init()
-node = CombinedSensorSubscriber()
-node_thread = threading.Thread(target=run_node, args=(node,), daemon=True)
-node_thread.start()
-
-np.set_printoptions(precision=2)
 
 # real_direction = {0: 4, 1: 5, 2: 6, 3: 7, 4: 0, 5: 1, 6: 2, 7: 3}
 real_direction = {i:i for i in range(9)}
@@ -30,9 +26,11 @@ tau_w = 10
 goal_radius = {"explore":0.25, "exploit":0.1524}
 
 class create3Driver():
+    
+    
     timestep = 32 * 3
-    wheel_radius = 0.036 # From Create3 documentation
-    axle_length = 0.235 # From Create3 documentation
+    #wheel_radius = 0.036 # From Create3 documentation
+    #axle_length = 0.235 # From Create3 documentation
     runTime = 5
     num_steps = int(runTime*60//(2*timestep/1000))
     num_head_directions = 8
@@ -43,25 +41,25 @@ class create3Driver():
     hmap_g = np.zeros((num_steps))
     ts = 0   
 
-    def __init__(self, bot_context, bot_mode):
+    def __init__(self, 
+                 bot_context = 0, 
+                 bot_mode = None, 
+                 sensor_node = None, 
+                 turning_node = None, 
+                 driving_node = None):
         super().__init__()
-        self.maxspeed = 4 # TODO: change this
-        self.leftSpeed = self.maxspeed
-        self.rightSpeed = self.maxspeed
-        self.timestep = timestep
+        # Define nodes to communicate with to robot
+        self.sensor_node = sensor_node
+        self.turning_node = turning_node
+        self.driving_node = driving_node
+        self.create_networks()
+
+        self.maxspeed = 1.0
+        self.turning_speed = 0.5
         self.mode = bot_mode
-        
-        # TODO: connect to hardware
-        self.compass = None #TODO: get from angular position
-        self.collided = False # PROBABLY DONE
-        self.leftMotor = None
-        self.rightMotor = None
-        self.leftMotor.setPosition(float('inf'))
-        self.rightMotor.setPosition(float('inf'))
-        self.leftMotor.setVelocity(self.leftSpeed)
-        self.rightMotor.setVelocity(self.rightSpeed)
-        self.leftWheelSensor = None #TODO: find way to remove
-        self.rightWheelSensor = None #TODO: find way to remove
+        self.compass = None
+        self.collided = False
+        self.relative_heading_to_north = 0
 
         self.boundaries = tf.Variable(tf.zeros(720, 1))
         self.act = tf.zeros(self.num_head_directions)
@@ -73,15 +71,8 @@ class create3Driver():
         self.s = tf.zeros_like(self.pcn.v)
         self.s_prev = tf.zeros_like(self.pcn.v)
 
-        # Initialization method to be defined by subclasses
-        self.initialize_components()
-        self.create_networks()
         self.sense()
         self.compute()
-
-    def initialize_components(self):
-        """Initialize and enable robot components with proper timestep."""
-        pass
 
     def create_networks(self):
         try:
@@ -102,71 +93,47 @@ class create3Driver():
             print('Creating new RCN')
             self.rcn = rewardCellLayer(10, num_place_cells, 3)
 
-    # TODO: fix this
     def forward(self):
-        self.leftSpeed = self.maxspeed
-        self.rightSpeed = self.maxspeed
-        
-        # Set left motor to rotate continuously at specified speed
-        self.leftMotor.setPosition(float('inf'))
-        self.leftMotor.setVelocity(self.leftSpeed)
-        # Set right motor to rotate continuously at specified speed
-        self.rightMotor.setPosition(float('inf'))
-        self.rightMotor.setVelocity(self.rightSpeed)
-
+        self.driving_node.linear_x = self.maxspeed
         self.sense()
 
-    # TODO: Completely replace with ros2
-    def turn(self, angle, circle=False):
+    def turn(self, angle):
         self.stop()
-        l_offset = self.leftPositionSensor.getValue()
-        r_offset = self.rightPositionSensor.getValue()
-        self.sense()
-        neg = -1.0 if (angle < 0.0) else 1.0
-        if circle:
-            self.leftMotor.setVelocity(0)
-        else:
-            self.leftMotor.setVelocity(neg * self.maxspeed/2)
-        self.rightMotor.setVelocity(-neg * self.maxspeed/2)
-        while True:
-            l = self.leftPositionSensor.getValue() - l_offset
-            r = self.rightPositionSensor.getValue() - r_offset
-            dl = l * self.wheel_radius                 
-            dr = r * self.wheel_radius
-            orientation = neg * (dl - dr) / self.axle_length
-            self.sense()
-            if not orientation < neg * angle:
-                break
+        self.turning_node.send_goal(angle, self.turning_speed)
+        # Wait for the action to complete
+        while not self.turning_node.action_complete():
+            time.sleep(0.05)  # Sleep to prevent busy waiting
+        self.turning_node.reset_action_complete_flag()
+        self.relative_heading_to_north += angle
         self.stop()
         self.sense()
 
-    #TODO: cmd_vel to 0
     def stop(self):
-        self.leftMotor.setVelocity(0)
-        self.rightMotor.setVelocity(0)
-
+        self.driving_node.linear_x = 0.0
 
     # # TODO: write this
-    # def step(self, timestep):
-    #     pass
+    def step(self, timestep):
+        pass
 
-    # TODO: fix this
     def sense(self):
-        self.boundaries = node.get_scan_data()
-        self.n_index = int(self.get_bearing_in_degrees(self.compass.getValues())) # TODO: FIX THIS
+        self.boundaries = self.sensor_node.get_scan_data().ranges
+        self.n_index = int(self.radian_to_heading(self.relative_heading_to_north))
         self.boundaries = np.roll(self.boundaries, 2*self.n_index)
         rad = np.deg2rad(self.n_index)
         v = np.array([np.cos(rad), np.sin(rad)])
-        self.hdv = self.head_direction(0, v) # TODO: UPDATE THIS
-        self.collided = node.get_bump_detection()
+        self.hdv = self.head_direction(0, v)
+        self.collided = self.sensor_node.get_bump_detection()
         self.step(self.timestep) #TODO: DETERMINE IF WE NEED THIS
 
-    def get_bearing_in_degrees(self, north):
-        rad = np.arctan2(north[0], north[2])
-        bearing = (rad - 1.5708) / np.pi * 180.0
-        if bearing < 0:
-            bearing = bearing + 360.0
-        return bearing
+    def radian_to_heading(self, radian):
+        # Convert radians to degrees
+        degrees = radian * (180.0 / 3.141592653589793)
+        
+        # Normalize the degrees to ensure it falls within 0 to 360 degrees
+        heading = degrees % 360
+        
+        # Return the heading
+        return heading
 
     def tuning_kernel(self, theta_0):
         theta_i = np.arange(0, 2*np.pi, np.deg2rad(360//self.num_head_directions))
@@ -181,25 +148,25 @@ class create3Driver():
 
     # TODO: get rid of all references to currPos
     def atGoal(self, exploit, s=0):
-        currPos = self.robot.getField('translation').getSFVec3f()
+        #currPos = self.robot.getField('translation').getSFVec3f()
         # TODO: change logic to detect tin foil using IR      
-        if (self.mode=="dmtp" and node.get_ground_reward() and exploit):
+        if (self.mode=="dmtp" and self.sensor_node.get_ground_reward() and exploit):
             print("Made it")
             print("Distance:", self.compute_path_length())
             print("Started:", np.array([self.hmap_x[0], self.hmap_y[0]]))
-            print("Goal:", np.array([currPos[0], currPos[2]]))
+            #print("Goal:", np.array([currPos[0], currPos[2]]))
             print("Distance:", np.linalg.norm(np.array([self.hmap_x[0], self.hmap_y[0]]) - self.goalLocation) - goal_radius["exploit"])
             print("Time taken:", self.getTime())
 
-            if self.mode=="dmtp":
-                self.auto_pilot(s, currPos)
+            #if self.mode=="dmtp":
+                #self.auto_pilot(s, currPos)
             
             # # Wait for console action instead of using a GUI window
             # input("Press Enter to save networks...")
             # self.save(True)
             # print("Saved!")
             # self.simulationSetMode(self.SIMULATION_MODE_PAUSE)
-                
+            
             # Create a simple GUI window with a message box
             root = tk.Tk()
             root.withdraw()  # Hide the main window
@@ -259,16 +226,17 @@ class create3Driver():
                 self.explore()
                 return
             
-            fig = plot.figure(2); fig.clf()
-            ax = fig.add_subplot(projection='polar')
-            ax.set_theta_zero_location("N")
-            ax.set_theta_direction(-1)
-            ax.plot(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), self.act)
+            #fig = plot.figure(2); fig.clf()
+            #ax = fig.add_subplot(projection='polar')
+            #ax.set_theta_zero_location("N")
+            #ax.set_theta_direction(-1)
+            #ax.plot(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), self.act)
             title = str(np.rad2deg(act)) + ", " + str(np.rad2deg(var)) + ", " + str(tf.reduce_max(self.act).numpy())
 
             curr_estimate = np.dot(hmap_z, self.pcn.v)
             try:
-                ax.tricontourf(hmap_x, hmap_y, curr_estimate, cmap=cmap)
+                pass
+                #ax.tricontourf(hmap_x, hmap_y, curr_estimate, cmap=cmap)
             except:
                 pass
 
@@ -337,11 +305,11 @@ class create3Driver():
     def compute(self):
         self.pcn([self.boundaries, np.linspace(0, 2*np.pi, 720, False)], self.hdv, self.context, self.mode, self.collided)
         self.step(self.timestep)
-        currPos = self.robot.getField('translation').getSFVec3f()
+        #currPos = self.robot.getField('translation').getSFVec3f()
         if self.ts >= self.hmap_x.size:
             return
-        self.hmap_x[self.ts] = currPos[0]
-        self.hmap_y[self.ts] = currPos[2]
+        #self.hmap_x[self.ts] = currPos[0]
+        #self.hmap_y[self.ts] = currPos[2]
         self.hmap_z[self.ts] = self.pcn.v
         self.hmap_h[self.ts] = self.hdv
         self.hmap_g[self.ts] = tf.reduce_sum(self.pcn.bvc_v)
@@ -373,35 +341,35 @@ class create3Driver():
         self.turn(np.random.normal(0, np.deg2rad(30)))
 
     # dmtp
-    def auto_pilot(self, s_start, currPos):
-        while not np.allclose(self.goalLocation, [currPos[0], currPos[2]], 0, goal_radius["explore"]):
-            currPos = self.robot.getField('translation').getSFVec3f()
-            delta_x = currPos[0] - self.goalLocation[0]
-            delta_y = currPos[2] - self.goalLocation[1]
+    # def auto_pilot(self, s_start, currPos):
+    #     while not np.allclose(self.goalLocation, [currPos[0], currPos[2]], 0, goal_radius["explore"]):
+    #         #currPos = self.robot.getField('translation').getSFVec3f()
+    #         delta_x = currPos[0] - self.goalLocation[0]
+    #         delta_y = currPos[2] - self.goalLocation[1]
             
-            if delta_x >= 0:
-                theta = tf.math.atan(abs(delta_y), abs(delta_x))
-                desired =  np.pi * 2 - theta if delta_y >= 0 else np.pi + theta
-            elif delta_y >= 0:
-                theta = tf.math.atan(abs(delta_y), abs(delta_x))
-                desired = np.pi/2 - theta
-            else:
-                theta = tf.math.atan(abs(delta_x), abs(delta_y))
-                desired = np.pi - theta
+    #         if delta_x >= 0:
+    #             theta = tf.math.atan(abs(delta_y), abs(delta_x))
+    #             desired =  np.pi * 2 - theta if delta_y >= 0 else np.pi + theta
+    #         elif delta_y >= 0:
+    #             theta = tf.math.atan(abs(delta_y), abs(delta_x))
+    #             desired = np.pi/2 - theta
+    #         else:
+    #             theta = tf.math.atan(abs(delta_x), abs(delta_y))
+    #             desired = np.pi - theta
 
-            self.turn(-(desired - np.deg2rad(self.n_index)))
+    #         self.turn(-(desired - np.deg2rad(self.n_index)))
             
-            self.sense()
-            self.compute()
-            self.forward()
-            self.s += self.pcn.v
-            s_start += 1
+    #         self.sense()
+    #         self.compute()
+    #         self.forward()
+    #         self.s += self.pcn.v
+    #         s_start += 1
 
-        self.s /= s_start
-        s_start = 0
-        plot.imshow(tf.reduce_max(self.pcn.w_rec, 0))
-        plot.show()
-        self.rcn.newReward(self.pcn, self.context)
+        # self.s /= s_start
+        # s_start = 0
+        # #plot.imshow(tf.reduce_max(self.pcn.w_rec, 0))
+        # #plot.show()
+        # self.rcn.newReward(self.pcn, self.context)
 
     def run(self, mode="explore"):
         print(f"goal at {self.goalLocation}")
@@ -418,9 +386,74 @@ class create3Driver():
             path_length += np.linalg.norm(np.array([self.hmap_y[n+1], self.hmap_x[n+1]])-np.array([self.hmap_y[n], self.hmap_x[n]]))
         return path_length
 
-# def __main__():
-#     bot = bot(64)
-#     bot.move()
-#     bot.stop()
-#     bot.bot.close()
-#     return
+
+
+def main():
+    np.set_printoptions(precision=2)
+
+    print("Program starting")
+    rclpy.init()
+
+    turning_node = RotateAngleClient()
+    driving_node = CmdVelPublisher()
+    sensor_node = CombinedSensorSubscriber()
+
+    executor = rclpy.executors.MultiThreadedExecutor()
+    executor.add_node(turning_node)
+    executor.add_node(sensor_node)
+    executor.add_node(driving_node)
+
+    # Start executor in a separate thread to keep the main thread free for polling
+    executor_thread = threading.Thread(target=executor.spin, daemon=True)
+    executor_thread.start()
+
+    print("waiting for sensors to read")
+    while (not sensor_node.get_bump_detection() is not None
+            or not sensor_node.get_ground_reward() is not None
+            or not sensor_node.get_scan_data() is not None):
+        print(f"bump detection detected: {sensor_node.get_bump_detection() is not None}")
+        print(f"ground detection detected: {sensor_node.get_ground_reward() is not None}")
+        print(f"scan detection detected: {sensor_node.get_scan_data() is not None}")
+        time.sleep(1)
+    
+    print("Initializing Bot")
+
+    #bot = create3Driver()
+    bot_context = 0
+    mode = "exploit"
+
+    if mode not in ["learn_context", "learn_path", "exploit"]:
+        raise ValueError("Invalid mode. Choose either 'learn_context', 'learn_path', or 'exploit'")
+
+    if mode == "learn_context":
+        bot.clear()
+        bot = create3Driver( bot_context=bot_context, 
+                            bot_mode='learning',
+                            sensor_node=sensor_node,
+                            turning_node=turning_node,
+                            driving_node=driving_node)
+        bot.run("explore")
+    elif mode == "learn_path":
+        bot = create3Driver( bot_context=bot_context, 
+                            bot_mode='dmtp',
+                            sensor_node=sensor_node,
+                            turning_node=turning_node,
+                            driving_node=driving_node)
+        bot.run("explore")
+    else: # mode == "exploit"
+        bot = create3Driver( bot_context=bot_context, 
+                            bot_mode='dmtp',
+                            sensor_node=sensor_node,
+                            turning_node=turning_node,
+                            driving_node=driving_node)
+        bot.run("exploit")
+
+    # Cleanup
+    rclpy.shutdown()
+    executor_thread.join()
+
+
+if __name__ == '__main__':
+    main()
+
+    

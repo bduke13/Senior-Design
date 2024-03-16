@@ -35,11 +35,11 @@ except:
     pass
 
 class placeCellLayer():
-
+    #self.pcn = placeCellLayer(num_place_cells, 720, self.timestep, dim, self.num_head_directions)
     def __init__(self, num, input_dim, timescale, max_dist, n_hd, n_contxts=10):
         #n is num of cells in place cell layer
         self.n = num
-        # bvclayer is boundary cells
+        # bvclayer is boundary cells. max_dist = dim = 12. input_dim = 720
         self.bvcLayer = bvcLayer(max_dist, input_dim) #input dim is number of head direction cells
         # n bvc is set to input dimension of bvcLayer
         n_bvc = self.bvcLayer.n
@@ -147,6 +147,7 @@ class bvcLayer():
     def g(self, r, theta):
         a = tf.exp(-(r[self.in_i] - self.d_i)**2/(2*self.sigma_d**2))/ tf.sqrt(2*PI*self.sigma_d**2)
         b = tf.exp(-((theta[self.in_i]-self.phi_i)**2)/(2*self.sigma_ang**2))/ tf.sqrt(2*PI*self.sigma_ang**2)
+        
         return a*b
 
     def __call__(self, r, theta):

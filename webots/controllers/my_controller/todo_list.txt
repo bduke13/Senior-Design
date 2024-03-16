@@ -1,0 +1,23 @@
+remove all references to .setPosition
+remove left and right wheel sensor
+change leftMotor and rightMotor to /cmd_vel
+    - create publisher that runs in a thread with the ability to call methods on
+make an action server to rotate?
+or just make a method in a node that is callable to rotate the robot a get_bearing_in_degrees
+
+figure out what compute_path_length does and if we need to remove/reimplement it
+
+in atGoal we may not have getTime or any time functionality in general
+
+sensors integrated (supposedly):
+    - lidar -> self.boundaries
+    - bump sensor -> self.collided
+    - goal sensing
+
+sensors to go:
+    - head direction - derived from odometry
+
+actuators to go:
+    - set motor speeds -> forward, stop
+
+    - rotate degrees -> turn

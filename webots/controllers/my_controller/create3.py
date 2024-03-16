@@ -7,6 +7,16 @@ import numpy as np
 import tkinter as tk
 from tkinter import messagebox
 from controller import Supervisor
+import rclpy
+import threading
+import time
+from sensor_subscriber import CombinedSensorSubscriber, run_node
+
+# initialize the subscriber for sensor data
+rclpy.init()
+node = CombinedSensorSubscriber()
+node_thread = threading.Thread(target=run_node, args=(node,), daemon=True)
+node_thread.start()
 
 np.set_printoptions(precision=2)
 
@@ -42,19 +52,16 @@ class create3Driver():
         self.mode = bot_mode
         
         # TODO: connect to hardware
-        self.compass = None
-        self.lidar = None  
-        self.leftBumper = None
-        self.rightBumper = None
-        self.collided = None
+        self.compass = None #TODO: get from angular position
+        self.collided = False # PROBABLY DONE
         self.leftMotor = None
         self.rightMotor = None
         self.leftMotor.setPosition(float('inf'))
         self.rightMotor.setPosition(float('inf'))
         self.leftMotor.setVelocity(self.leftSpeed)
         self.rightMotor.setVelocity(self.rightSpeed)
-        self.leftWheelSensor = None
-        self.rightWheelSensor = None
+        self.leftWheelSensor = None #TODO: find way to remove
+        self.rightWheelSensor = None #TODO: find way to remove
 
         self.boundaries = tf.Variable(tf.zeros(720, 1))
         self.act = tf.zeros(self.num_head_directions)
@@ -109,7 +116,7 @@ class create3Driver():
 
         self.sense()
 
-    # TODO: fix this
+    # TODO: Completely replace with ros2
     def turn(self, angle, circle=False):
         self.stop()
         l_offset = self.leftPositionSensor.getValue()
@@ -133,15 +140,11 @@ class create3Driver():
         self.stop()
         self.sense()
 
+    #TODO: cmd_vel to 0
     def stop(self):
         self.leftMotor.setVelocity(0)
         self.rightMotor.setVelocity(0)
 
-    def move(self):
-        self.leftMotor.setPosition(float('inf'))
-        self.rightMotor.setPosition(float('inf'))
-        self.leftMotor.setVelocity(self.leftSpeed)
-        self.rightMotor.setVelocity(self.rightSpeed)
 
     # # TODO: write this
     # def step(self, timestep):
@@ -149,15 +152,14 @@ class create3Driver():
 
     # TODO: fix this
     def sense(self):
-        self.boundaries = self.rangeFinder.getRangeImage()
-        self.n_index = int(self.get_bearing_in_degrees(self.compass.getValues()))
+        self.boundaries = node.get_scan_data()
+        self.n_index = int(self.get_bearing_in_degrees(self.compass.getValues())) # TODO: FIX THIS
         self.boundaries = np.roll(self.boundaries, 2*self.n_index)
         rad = np.deg2rad(self.n_index)
         v = np.array([np.cos(rad), np.sin(rad)])
-        self.hdv = self.head_direction(0, v)
-        self.collided.scatter_nd_update([[0]], [int(self.leftBumper.getValue())]) # updates index 0 of the self.collided array with the value of self.leftBumper.getValue()
-        self.collided.scatter_nd_update([[1]], [int(self.rightBumper.getValue())]) # likewise
-        self.step(self.timestep)
+        self.hdv = self.head_direction(0, v) # TODO: UPDATE THIS
+        self.collided = node.get_bump_detection()
+        self.step(self.timestep) #TODO: DETERMINE IF WE NEED THIS
 
     def get_bearing_in_degrees(self, north):
         rad = np.arctan2(north[0], north[2])
@@ -181,9 +183,7 @@ class create3Driver():
     def atGoal(self, exploit, s=0):
         currPos = self.robot.getField('translation').getSFVec3f()
         # TODO: change logic to detect tin foil using IR      
-        if (self.mode=="dmtp" \
-            and np.allclose(self.goalLocation, [currPos[0], currPos[2]], 0, goal_radius["exploit"])) \
-            or ((self.mode=="cleanup" or self.mode=="learning") and (self.getTime() >=60*self.runTime)):
+        if (self.mode=="dmtp" and node.get_ground_reward() and exploit):
             print("Made it")
             print("Distance:", self.compute_path_length())
             print("Started:", np.array([self.hmap_x[0], self.hmap_y[0]]))
@@ -218,7 +218,7 @@ class create3Driver():
         self.stop()
         self.sense()
         self.compute()
-        self.atGoal(True)
+        self.atGoal(exploit = True)
 
         if self.ts > tau_w:
             act, max_rew, n_s = 0, 0, 1 
@@ -278,7 +278,7 @@ class create3Driver():
             # ax.set_title("Max firing rate {v}".format(v=tf.math.argmax(self.pcn.v))) #int(100*tf.reduce_max(self.pcn.v).numpy())/100))
             # # plot.pause(0.01)
            
-            if np.any(self.collided):
+            if self.collided:
                 print("Ow, I hit something :(")
                 self.turn(np.deg2rad(60))
                 self.stop()
@@ -335,7 +335,7 @@ class create3Driver():
             pass
 
     def compute(self):
-        self.pcn([self.boundaries, np.linspace(0, 2*np.pi, 720, False)], self.hdv, self.context, self.mode, np.any(self.collided))
+        self.pcn([self.boundaries, np.linspace(0, 2*np.pi, 720, False)], self.hdv, self.context, self.mode, self.collided)
         self.step(self.timestep)
         currPos = self.robot.getField('translation').getSFVec3f()
         if self.ts >= self.hmap_x.size:
@@ -355,7 +355,7 @@ class create3Driver():
         for s in range(tau_w):
             self.sense()
 
-            if np.any(self.collided):
+            if self.collided:
                 self.turn(np.deg2rad(60))
                 break
             

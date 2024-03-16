@@ -1,13 +1,12 @@
-from irobot_edu_sdk.backend.bluetooth import Bluetooth
-from irobot_edu_sdk.robots import event, hand_over, Color, Robot, Create3
 from networks import *
 import _pickle as pickle
 import os
 from astropy.stats import circmean, circvar
 from matplotlib.cm import get_cmap
 import numpy as np
-
-create3 = Create3(Bluetooth())
+import tkinter as tk
+from tkinter import messagebox
+from controller import Supervisor
 
 np.set_printoptions(precision=2)
 
@@ -18,22 +17,9 @@ dim = 12
 cmap = get_cmap('plasma') # colormap
 timestep = 32 * 3
 tau_w = 10 
-goal_radius = {"explore":0.1, "exploit":0.6}
+goal_radius = {"explore":0.25, "exploit":0.1524}
 
-try:
-    with open('hmap_x.pkl', 'rb') as f:
-        hmap_x = pickle.load(f)
-    with open('hmap_y.pkl', 'rb') as f:
-        hmap_y = pickle.load(f)
-    with open('hmap_z.pkl', 'rb') as f:
-        hmap_z = np.asarray(pickle.load(f))
-except:
-    pass
-
-class bot():
-    maxspeed = 4
-    leftSpeed = maxspeed
-    rightSpeed = maxspeed
+class create3Driver():
     timestep = 32 * 3
     wheel_radius = 0.036 # From Create3 documentation
     axle_length = 0.235 # From Create3 documentation
@@ -47,16 +33,15 @@ class bot():
     hmap_g = np.zeros((num_steps))
     ts = 0   
 
-    def __init__(self, context, bot_mode):
-        super().__init__(Bluetooth())
-        self.bot = create3
-        self.maxspeed = 4
+    def __init__(self, bot_context, bot_mode):
+        super().__init__()
+        self.maxspeed = 4 # TODO: change this
         self.leftSpeed = self.maxspeed
         self.rightSpeed = self.maxspeed
         self.timestep = timestep
         self.mode = bot_mode
         
-        # Placeholder values for hardware components, actual instances will be handled by subclasses
+        # TODO: connect to hardware
         self.compass = None
         self.lidar = None  
         self.leftBumper = None
@@ -73,11 +58,11 @@ class bot():
 
         self.boundaries = tf.Variable(tf.zeros(720, 1))
         self.act = tf.zeros(self.num_head_directions)
-        self.step(self.timestep)
-        self.goalLocation = [[-3, 3], [-1.5, -3], [-3, 2.75], [-1, -1]][context]
+        self.step(self.timestep) # Inherited from Supervisor, advances simulation by timestep
+        self.goalLocation = [[-3, 3], [-1.5, -3], [-3, 2.75], [-1, -1]][bot_context]
         self.expectedReward = 0
         self.lastReward = 0
-        self.context = context
+        self.context = bot_context
         self.s = tf.zeros_like(self.pcn.v)
         self.s_prev = tf.zeros_like(self.pcn.v)
 
@@ -101,7 +86,7 @@ class bot():
                 print("Using pre-existing PCN")
         except:
             print('Creating new PCN')
-            self.pcn = placeCellLayer(num_place_cells, 720, self.timestep, dim, self.n_hd)
+            self.pcn = placeCellLayer(num_place_cells, 720, self.timestep, dim, self.num_head_directions)
         try:
             with open('rcn.pkl', 'rb') as f:
                 self.rcn = pickle.load(f)
@@ -110,6 +95,7 @@ class bot():
             print('Creating new RCN')
             self.rcn = rewardCellLayer(10, num_place_cells, 3)
 
+    # TODO: fix this
     def forward(self):
         self.leftSpeed = self.maxspeed
         self.rightSpeed = self.maxspeed
@@ -123,6 +109,7 @@ class bot():
 
         self.sense()
 
+    # TODO: fix this
     def turn(self, angle, circle=False):
         self.stop()
         l_offset = self.leftPositionSensor.getValue()
@@ -156,6 +143,11 @@ class bot():
         self.leftMotor.setVelocity(self.leftSpeed)
         self.rightMotor.setVelocity(self.rightSpeed)
 
+    # # TODO: write this
+    # def step(self, timestep):
+    #     pass
+
+    # TODO: fix this
     def sense(self):
         self.boundaries = self.rangeFinder.getRangeImage()
         self.n_index = int(self.get_bearing_in_degrees(self.compass.getValues()))
@@ -163,8 +155,8 @@ class bot():
         rad = np.deg2rad(self.n_index)
         v = np.array([np.cos(rad), np.sin(rad)])
         self.hdv = self.head_direction(0, v)
-        self.collided.scatter_nd_update([[0]], [int(self.leftBumper.getValue())])
-        self.collided.scatter_nd_update([[1]], [int(self.rightBumper.getValue())])
+        self.collided.scatter_nd_update([[0]], [int(self.leftBumper.getValue())]) # updates index 0 of the self.collided array with the value of self.leftBumper.getValue()
+        self.collided.scatter_nd_update([[1]], [int(self.rightBumper.getValue())]) # likewise
         self.step(self.timestep)
 
     def get_bearing_in_degrees(self, north):
@@ -185,6 +177,7 @@ class bot():
         k = self.tuning_kernel(theta_0)
         return np.dot(v_in, k)
 
+    # TODO: get rid of all references to currPos
     def atGoal(self, exploit, s=0):
         currPos = self.robot.getField('translation').getSFVec3f()
         # TODO: change logic to detect tin foil using IR      
@@ -199,12 +192,26 @@ class bot():
             print("Time taken:", self.getTime())
 
             if self.mode=="dmtp":
-                self.autopilot(s, currPos)
+                self.auto_pilot(s, currPos)
+            
+            # # Wait for console action instead of using a GUI window
+            # input("Press Enter to save networks...")
+            # self.save(True)
+            # print("Saved!")
+            # self.simulationSetMode(self.SIMULATION_MODE_PAUSE)
                 
-            self.save(True)
+            # Create a simple GUI window with a message box
+            root = tk.Tk()
+            root.withdraw()  # Hide the main window
+            root.attributes("-topmost", True)  # Always keep the window on top
+            root.update()
+            messagebox.showinfo("Information", "Press OK to save networks")
             print("Saved!")
-            self.worldReload()
-
+            # Reset the topmost attribute and destroy the window after closing the message box
+            root.attributes("-topmost", False)
+            root.destroy()  # Destroy the main window
+            self.save(True)
+            self.simulationSetMode(self.SIMULATION_MODE_PAUSE)
 
     def exploit(self):
         self.s *= 0
@@ -215,29 +222,39 @@ class bot():
 
         if self.ts > tau_w:
             act, max_rew, n_s = 0, 0, 1 
-            pot_rew = np.empty(self.n_hd)
-            pot_e = np.empty(self.n_hd)
+            pot_rew = np.empty(self.num_head_directions)
+            pot_e = np.empty(self.num_head_directions)
             self.rcn(self.pcn.v, True, self.context)
+
             if (self.rcn.v[self.context] <= 1e-6):
+                print("entering explore mode")
                 self.explore()
                 return
                 
             obstacles = np.dot(self.pcn.w_bc, self.pcn.v)
-           
-            for d in range(self.n_hd):
+
+            # iterate over all head directions
+            for d in range(self.num_head_directions):
+                # generate a prediction for the current head direction
                 pcn_v = self.pcn.exploit(d, self.context, num_steps=n_s)
+                # compute the potential reward for the current head direction
                 self.rcn(pcn_v)
-                pot_e[d] = tf.norm(pcn_v, 1) # 
+                # compute the L1 norm (sum of absolute values) for the current head direction
+                pot_e[d] = tf.norm(pcn_v, 1)
+                # compute the potential reward for the current head direction
                 pot_rew[d] = np.nan_to_num(self.rcn.v[self.context]) # rnc.v: firing rate - activation value
                 
-            print(pot_rew)
+            print(pot_rew) # TODO: may not need this
 
+            # compute the head direction with the highest potential reward
             self.act +=  1 * (pot_rew - self.act) 
 
-            act = np.nan_to_num(circmean(np.linspace(0, np.pi*2, self.n_hd, endpoint=False), weights=self.act))    
-            var = np.nan_to_num(circvar(np.linspace(0, np.pi*2, self.n_hd, endpoint=False), weights=self.act)) 
-            max_rew = pot_rew[int(act//(2*np.pi/self.n_hd))]
+            # compute the head direction with the highest potential reward
+            act = np.nan_to_num(circmean(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), weights=self.act))    
+            var = np.nan_to_num(circvar(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), weights=self.act)) 
+            max_rew = pot_rew[int(act//(2*np.pi/self.num_head_directions))]
 
+            # didn't explore enough
             if (max_rew <= 1e-3):
                 self.explore()
                 return
@@ -246,7 +263,7 @@ class bot():
             ax = fig.add_subplot(projection='polar')
             ax.set_theta_zero_location("N")
             ax.set_theta_direction(-1)
-            ax.plot(np.linspace(0, np.pi*2, self.n_hd, endpoint=False), self.act)
+            ax.plot(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), self.act)
             title = str(np.rad2deg(act)) + ", " + str(np.rad2deg(var)) + ", " + str(tf.reduce_max(self.act).numpy())
 
             curr_estimate = np.dot(hmap_z, self.pcn.v)
@@ -262,15 +279,17 @@ class bot():
             # # plot.pause(0.01)
            
             if np.any(self.collided):
+                print("Ow, I hit something :(")
                 self.turn(np.deg2rad(60))
                 self.stop()
-                self.rcn.td_update(self.pcn.v, pot_e[int(act//(2*np.pi/self.n_hd))], max_rew, self.context)
+                self.rcn.td_update(self.pcn.v, max_rew, self.context)
                 return
 
             else:
                 if abs(act) > np.pi:
-                    act = act - np.sign(act)*2*np.pi  
-                self.turn(-np.deg2rad(np.rad2deg(act) - self.n_index)%(np.pi*2)) # 360*act/self.n_hd - self.n_index))
+                    act = act - np.sign(act)*2*np.pi
+                print('turning')  
+                self.turn(-np.deg2rad(np.rad2deg(act) - self.n_index)%(np.pi*2))
                 print(np.rad2deg(act), self.n_index, np.rad2deg(act) - self.n_index)
             
 
@@ -283,11 +302,7 @@ class bot():
 
             self.s /= tau_w
 
-            
-            # self.trans_prob += np.nan_to_num(.1 * self.hdv[:, np.newaxis, np.newaxis] * (self.s[:, np.newaxis] * (self.s[:, np.newaxis] - tf.reduce_mean(tf.pow(self.s, 2))) * self.s_prev[np.newaxis, :]/tf.reduce_mean(tf.pow(self.s, 2))))
-            # # self.trans_prob += self.hdv[:, np.newaxis, np.newaxis] * (self.s[:, np.newaxis] * self.s_prev[np.newaxis, :] - self.s_prev[:, np.newaxis] * self.s[np.newaxis, :])
-            # self.pcn.w_rec = self.trans_prob
-            self.expectedReward = max_rew/pot_e[int(act//(2*np.pi/self.n_hd))]
+            self.expectedReward = max_rew/pot_e[int(act//(2*np.pi/self.num_head_directions))]
             self.lastReward = self.rcn.v[self.context]
     
     def save(self, include_maps=True):
@@ -306,6 +321,7 @@ class bot():
                 pickle.dump(self.hmap_g[:self.ts], output)
             with open('hmap_h.pkl', 'wb') as output:
                 pickle.dump(self.hmap_h[:self.ts], output)
+        return
 
     def clear(self):
         try:
@@ -402,9 +418,9 @@ class bot():
             path_length += np.linalg.norm(np.array([self.hmap_y[n+1], self.hmap_x[n+1]])-np.array([self.hmap_y[n], self.hmap_x[n]]))
         return path_length
 
-def __main__():
-    bot = bot(64)
-    bot.move()
-    bot.stop()
-    bot.bot.close()
-    return
+# def __main__():
+#     bot = bot(64)
+#     bot.move()
+#     bot.stop()
+#     bot.bot.close()
+#     return

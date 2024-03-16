@@ -92,15 +92,11 @@ class placeCellLayer():
             dw = self.tau * (self.v[:, np.newaxis] * (self.bvc_v[np.newaxis, :]  - 1/np.sqrt(.5) * self.v[:, np.newaxis] * self.w_in))  # .5, 8 not 10
             self.w_in.assign_add(dw)
 
+    # update the state of the place cells 
     def exploit(self, direction, contxt=0, num_steps=1):
         
         v = tf.identity(self.v)
         
-        # check for collision
-        # if tf.tensordot(self.w_bc, self.v, 1)[direction] >= .5:
-        #     return tf.zeros_like(v)
-
-        # plot.figure()
         for s in range(num_steps):
             v_prev = tf.identity(v)
             z = 0
@@ -117,7 +113,7 @@ class placeCellLayer():
         except:
             pass
        
-        return v
+        return v # return the updated state of the place cells after num_steps iterations
 
     def __getitem__(self, key):
         return self.v[key]  # tf.gather(self.v, key)

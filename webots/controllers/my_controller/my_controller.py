@@ -1,6 +1,7 @@
 """my_controller_iCreate controller."""
 
 from driver import webotsDriver
+from create3 import create3Driver
 import numpy as np
 import matplotlib.pyplot as plot
 np.random.seed(0)
@@ -15,10 +16,10 @@ def run_bot(mode, context=0, randomize=True):
     if mode == "learn_context":
         bot.clear()
         bot.initialization(context, mode="learning", randomize=randomize)
-        bot.run()
+        bot.run("explore")
     elif mode == "learn_path":
         bot.initialization(context, mode="dmtp", randomize=randomize)
-        bot.run()
+        bot.run("explore")
     else: # mode == "exploit"
         bot.initialization(context, mode="dmtp", randomize=randomize)
         bot.run("exploit")
@@ -26,5 +27,4 @@ def run_bot(mode, context=0, randomize=True):
 # CLOSE ALL FIGURES AND WAIT FOR WORLD TO RELOAD IN BETWEEN RUNS
 # PICKLE FILES SHOULD APPEAR AFTER learn_path
 
-# Use the run_bot function to control the bot
-run_bot("learn_path")
+run_bot("exploit")

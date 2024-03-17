@@ -22,7 +22,7 @@ class CmdVelPublisher(Node):
     def linear_x(self, value):
         with self.linear_x_lock:
             self._linear_x = value
-            self.get_logger().info(f'Setting linear x to: {self._linear_x}')
+            #self.get_logger().info(f'Setting linear x to: {self._linear_x}')
 
     def timer_callback(self):
         msg = Twist()

@@ -1,5 +1,5 @@
 from networks import *
-import pickle
+import _pickle as pickle
 import os
 from astropy.stats import circmean, circvar
 from matplotlib.cm import get_cmap
@@ -14,6 +14,8 @@ import time
 from sensor_subscriber import CombinedSensorSubscriber
 from turning_node import RotateAngleClient
 from driving_node import CmdVelPublisher
+import logging
+
 
 
 # real_direction = {0: 4, 1: 5, 2: 6, 3: 7, 4: 0, 5: 1, 6: 2, 7: 3}
@@ -54,8 +56,8 @@ class create3Driver():
         self.driving_node = driving_node
         self.create_networks()
 
-        self.maxspeed = 1.0
-        self.turning_speed = 0.5
+        self.maxspeed = 0.25
+        self.turning_speed = 1.0
         self.mode = bot_mode
         self.compass = None
         self.collided = False
@@ -64,7 +66,7 @@ class create3Driver():
         self.boundaries = tf.Variable(tf.zeros(720, 1))
         self.act = tf.zeros(self.num_head_directions)
         self.step(self.timestep) # Inherited from Supervisor, advances simulation by timestep
-        self.goalLocation = [[-3, 3], [-1.5, -3], [-3, 2.75], [-1, -1]][bot_context]
+        self.goalLocation = [[-1, 1], [-1.5, -3], [-3, 2.75], [-1, -1]][bot_context]
         self.expectedReward = 0
         self.lastReward = 0
         self.context = bot_context
@@ -75,8 +77,9 @@ class create3Driver():
         self.compute()
 
     def create_networks(self):
+        file_prefix = "webots/controllers/my_controller/"
         try:
-            with open('pcn.pkl', "rb") as f:
+            with open(file_prefix + 'pcn.pkl', "rb") as f:
                 self.pcn = pickle.load(f)
                 self.pcn.z *= 0
                 self.pcn.v *= 0
@@ -86,7 +89,7 @@ class create3Driver():
             print('Creating new PCN')
             self.pcn = placeCellLayer(num_place_cells, 720, self.timestep, dim, self.num_head_directions)
         try:
-            with open('rcn.pkl', 'rb') as f:
+            with open(file_prefix + 'rcn.pkl', 'rb') as f:
                 self.rcn = pickle.load(f)
                 print("Using pre-existing RCN")
         except:
@@ -113,6 +116,7 @@ class create3Driver():
 
     # # TODO: write this
     def step(self, timestep):
+        #time.sleep(0.0001)
         pass
 
     def sense(self):
@@ -152,11 +156,12 @@ class create3Driver():
         # TODO: change logic to detect tin foil using IR      
         if (self.mode=="dmtp" and self.sensor_node.get_ground_reward() and exploit):
             print("Made it")
-            print("Distance:", self.compute_path_length())
-            print("Started:", np.array([self.hmap_x[0], self.hmap_y[0]]))
+            self.stop()
+            #print("Distance:", self.compute_path_length())
+            #print("Started:", np.array([self.hmap_x[0], self.hmap_y[0]]))
             #print("Goal:", np.array([currPos[0], currPos[2]]))
-            print("Distance:", np.linalg.norm(np.array([self.hmap_x[0], self.hmap_y[0]]) - self.goalLocation) - goal_radius["exploit"])
-            print("Time taken:", self.getTime())
+            #print("Distance:", np.linalg.norm(np.array([self.hmap_x[0], self.hmap_y[0]]) - self.goalLocation) - goal_radius["exploit"])
+            #print("Time taken:", self.getTime())
 
             #if self.mode=="dmtp":
                 #self.auto_pilot(s, currPos)
@@ -168,17 +173,27 @@ class create3Driver():
             # self.simulationSetMode(self.SIMULATION_MODE_PAUSE)
             
             # Create a simple GUI window with a message box
-            root = tk.Tk()
-            root.withdraw()  # Hide the main window
-            root.attributes("-topmost", True)  # Always keep the window on top
-            root.update()
-            messagebox.showinfo("Information", "Press OK to save networks")
-            print("Saved!")
+            #root = tk.Tk()
+            #root.withdraw()  # Hide the main window
+            #root.attributes("-topmost", True)  # Always keep the window on top
+            #root.update()
+            #messagebox.showinfo("Information", "Press OK to save networks")
+            #print("Saved!")
             # Reset the topmost attribute and destroy the window after closing the message box
-            root.attributes("-topmost", False)
-            root.destroy()  # Destroy the main window
-            self.save(True)
-            self.simulationSetMode(self.SIMULATION_MODE_PAUSE)
+            #root.attributes("-topmost", False)
+            #root.destroy()  # Destroy the main window
+            #self.save(True)
+            #self.simulationSetMode(self.SIMULATION_MODE_PAUSE)
+
+    def normalize_left_turn_angle(self, angle):
+        # Ensure the angle is within [0, 2π]
+        angle = angle % (2 * np.pi)
+        
+        # If the angle is greater than π, convert it to a negative value representing the equivalent right turn.
+        if angle > np.pi:
+            angle = angle - 2 * np.pi
+        
+        return angle
 
     def exploit(self):
         self.s *= 0
@@ -226,14 +241,14 @@ class create3Driver():
                 self.explore()
                 return
             
-            #fig = plot.figure(2); fig.clf()
-            #ax = fig.add_subplot(projection='polar')
-            #ax.set_theta_zero_location("N")
-            #ax.set_theta_direction(-1)
-            #ax.plot(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), self.act)
+            fig = plot.figure(2); fig.clf()
+            ax = fig.add_subplot(projection='polar')
+            ax.set_theta_zero_location("N")
+            ax.set_theta_direction(-1)
+            ax.plot(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), self.act)
             title = str(np.rad2deg(act)) + ", " + str(np.rad2deg(var)) + ", " + str(tf.reduce_max(self.act).numpy())
 
-            curr_estimate = np.dot(hmap_z, self.pcn.v)
+            #curr_estimate = np.dot(hmap_z, self.pcn.v)
             try:
                 pass
                 #ax.tricontourf(hmap_x, hmap_y, curr_estimate, cmap=cmap)
@@ -254,10 +269,11 @@ class create3Driver():
                 return
 
             else:
+                
                 if abs(act) > np.pi:
                     act = act - np.sign(act)*2*np.pi
                 print('turning')  
-                self.turn(-np.deg2rad(np.rad2deg(act) - self.n_index)%(np.pi*2))
+                self.turn(self.normalize_left_turn_angle(-np.deg2rad(np.rad2deg(act) - self.n_index)%(np.pi*2)))
                 print(np.rad2deg(act), self.n_index, np.rad2deg(act) - self.n_index)
             
 
@@ -390,6 +406,15 @@ class create3Driver():
 
 def main():
     np.set_printoptions(precision=2)
+
+    # Suppress TensorFlow warnings
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # This suppresses TensorFlow C++ warnings.
+
+    # Set TensorFlow logging to ERROR only
+    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+
+    # Suppress other libraries' logging if needed
+    logging.getLogger('another_library').setLevel(logging.ERROR)
 
     print("Program starting")
     rclpy.init()

@@ -25,12 +25,13 @@ tau_rec = 30//2
 threshold_on = .05
 
 try:
-    with open('hmap_x.pkl', 'rb') as f:
-        hmap_x = pickle.load(f)
-    with open('hmap_y.pkl', 'rb') as f:
-        hmap_y = pickle.load(f)
-    with open('hmap_z.pkl', 'rb') as f:
-        hmap_z = np.asarray(pickle.load(f))
+    pass
+    # with open('hmap_x.pkl', 'rb') as f:
+    #     hmap_x = pickle.load(f)
+    # with open('hmap_y.pkl', 'rb') as f:
+    #     hmap_y = pickle.load(f)
+    #with open('hmap_z.pkl', 'rb') as f:
+    #    hmap_z = np.asarray(pickle.load(f))
 except:
     pass
 
@@ -102,16 +103,16 @@ class placeCellLayer():
             z = 0
             v = tf.tanh(tf.nn.relu(tf.tensordot(tf.cast(self.w_rec[direction], tf.float32), v_prev, 1)- v_prev)) 
 
-        fig = plot.figure(1)
-        ax = fig.add_subplot(3,3,plot_location[direction])
-        curr_estimate = np.dot(hmap_z, v)
-        try:
-            ax.tricontourf(hmap_x, hmap_y, curr_estimate, cmap=cmap)
-            ax.set_aspect('equal')
-            ax.set_ylim(5, -5)
-            ax.set_title("Norm {0:.2f}".format(tf.linalg.norm(v, 1)))
-        except:
-            pass
+        # fig = plot.figure(1)
+        # ax = fig.add_subplot(3,3,plot_location[direction])
+        # curr_estimate = np.dot(hmap_z, v)
+        # try:
+        #     ax.tricontourf(hmap_x, hmap_y, curr_estimate, cmap=cmap)
+        #     ax.set_aspect('equal')
+        #     ax.set_ylim(5, -5)
+        #     ax.set_title("Norm {0:.2f}".format(tf.linalg.norm(v, 1)))
+        # except:
+        #     pass
        
         return v # return the updated state of the place cells after num_steps iterations
 
@@ -172,17 +173,17 @@ class rewardCellLayer():
         z = 0
 
         for t in range(10):
-            try:
-                fig = plot.figure(2)
-                ax = fig.add_subplot(111)
-                curr_estimate = np.dot(hmap_z, pc_net.v)
-                ax.tricontourf(hmap_x, hmap_y, curr_estimate, cmap=cmap)
-                ax.set_aspect('equal')
-                ax.set_ylim(5, -5)
-                ax.set_title("Max firing rate {v}".format(v=tf.reduce_max(pc_net.v))) 
-                plot.show()
-            except:
-                pass
+            # try:
+            #     fig = plot.figure(2)
+            #     ax = fig.add_subplot(111)
+            #     curr_estimate = np.dot(hmap_z, pc_net.v)
+            #     ax.tricontourf(hmap_x, hmap_y, curr_estimate, cmap=cmap)
+            #     ax.set_aspect('equal')
+            #     ax.set_ylim(5, -5)
+            #     ax.set_title("Max firing rate {v}".format(v=tf.reduce_max(pc_net.v))) 
+            #     plot.show()
+            # except:
+            #     pass
             
             dw = tf.tensor_scatter_nd_add(dw, [[contxt]], [tf.math.exp(-t/6) * tf.linalg.normalize(pc_net.v, np.inf)[0]]) 
             v = tf.identity(pc_net.v)
@@ -208,4 +209,5 @@ class rewardCellLayer():
 
 
 if __name__ == "__main__":
-    gcn = gridCellLayer(10, 10, 10, 10)
+    #gcn = gridCellLayer(10, 10, 10, 10)
+    pass

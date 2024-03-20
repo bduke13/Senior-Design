@@ -3,6 +3,7 @@ import _pickle as pickle
 import os
 from astropy.stats import circmean, circvar
 from matplotlib.cm import get_cmap
+import matplotlib.pyplot as plt
 import numpy as np
 import tkinter as tk
 from tkinter import messagebox
@@ -14,8 +15,10 @@ import time
 from sensor_subscriber import CombinedSensorSubscriber
 from turning_node import RotateAngleClient
 from driving_node import CmdVelPublisher
+from reset_pose_node import SimpleResetPoseClient
 import logging
-
+import math
+import sys
 
 
 # real_direction = {0: 4, 1: 5, 2: 6, 3: 7, 4: 0, 5: 1, 6: 2, 7: 3}
@@ -56,12 +59,11 @@ class create3Driver():
         self.driving_node = driving_node
         self.create_networks()
 
-        self.maxspeed = 0.25
+        self.maxspeed = 0.8
         self.turning_speed = 1.0
         self.mode = bot_mode
         self.compass = None
         self.collided = False
-        self.relative_heading_to_north = 0
 
         self.boundaries = tf.Variable(tf.zeros(720, 1))
         self.act = tf.zeros(self.num_head_directions)
@@ -100,30 +102,73 @@ class create3Driver():
         self.driving_node.linear_x = self.maxspeed
         self.sense()
 
-    def turn(self, angle):
+    # def turn(self, angle):
+    #     if abs(angle) > np.pi:
+    #         angle = angle - np.sign(angle) * 2 * np.pi        
+    #     self.stop()
+    #     print(f"starting angle: {angle}")
+    #     self.turning_node.send_goal(angle, self.turning_speed)
+    #     print(f"new angle: {int(self.sensor_node.get_odom_heading())}")
+    #     # Wait for the action to complete
+    #     while not self.turning_node.action_complete():
+    #         time.sleep(0.05)  # Sleep to prevent busy waiting
+    #     self.turning_node.reset_action_complete_flag()
+    #     self.stop()
+    #     self.sense()
+        
+    def turn(self, target_angle_radians):
+        # Convert current and target angles to radians
+        current_angle_radians = np.deg2rad(self.sensor_node.get_odom_heading())
+        print(f"curr: {self.current_degree_heading}")#, target: {target_angle_radians}")
+        
+        # Calculate relative angle to turn (in radians)
+        angle_to_turn = target_angle_radians - current_angle_radians
+        
+        # Normalize the angle to the range [-pi, pi] aka stop loop di loops
+        angle_to_turn = (angle_to_turn + np.pi) % (2 * np.pi) - np.pi
+        #print(f'angle_to_turn: {angle_to_turn}')
+        
         self.stop()
-        self.turning_node.send_goal(angle, self.turning_speed)
+        #print(f"Starting turn by {angle_to_turn} radians")
+        
+        # Send the turn command as a relative angle
+        self.turning_node.send_goal(-angle_to_turn, self.turning_speed)
+        
         # Wait for the action to complete
         while not self.turning_node.action_complete():
             time.sleep(0.05)  # Sleep to prevent busy waiting
+        
         self.turning_node.reset_action_complete_flag()
-        self.relative_heading_to_north += angle
+        print(f"after_turn: {self.sensor_node.get_odom_heading()}")
+        
         self.stop()
         self.sense()
+        
+        # Update current heading
+        self.current_degree_heading = (self.current_degree_heading + np.degrees(angle_to_turn)) % 360
+        print(f"New angle: {self.current_degree_heading} degrees")
 
     def stop(self):
         self.driving_node.linear_x = 0.0
 
     # # TODO: write this
     def step(self, timestep):
-        #time.sleep(0.0001)
+        time.sleep(0.0096)
         pass
 
     def sense(self):
         self.boundaries = self.sensor_node.get_scan_data().ranges
-        self.n_index = int(self.radian_to_heading(self.relative_heading_to_north))
-        self.boundaries = np.roll(self.boundaries, 2*self.n_index)
-        rad = np.deg2rad(self.n_index)
+        # Rotate by 180 degrees and reverse the list
+        self.boundaries = [(x if x != 'inf' else float('inf')) for x in reversed(self.boundaries)]
+        # Adjust the angles by adding pi (180 degrees) to each angle and then normalizing
+        num_readings = len(self.boundaries)
+        self.boundaries = [self.boundaries[(i + num_readings // 2) % num_readings] for i in range(num_readings)]
+        # with open('real_boundaries.txt', 'w') as file:
+        #     file.writelines([str(boundary) + '\n' for boundary in self.boundaries])
+        # sys.exit()
+        self.current_degree_heading = int(self.sensor_node.get_odom_heading())
+        self.boundaries = np.roll(self.boundaries, 2*self.current_degree_heading)
+        rad = np.deg2rad(self.current_degree_heading)
         v = np.array([np.cos(rad), np.sin(rad)])
         self.hdv = self.head_direction(0, v)
         self.collided = self.sensor_node.get_bump_detection()
@@ -157,6 +202,7 @@ class create3Driver():
         if (self.mode=="dmtp" and self.sensor_node.get_ground_reward() and exploit):
             print("Made it")
             self.stop()
+            sys.exit()
             #print("Distance:", self.compute_path_length())
             #print("Started:", np.array([self.hmap_x[0], self.hmap_y[0]]))
             #print("Goal:", np.array([currPos[0], currPos[2]]))
@@ -185,15 +231,15 @@ class create3Driver():
             #self.save(True)
             #self.simulationSetMode(self.SIMULATION_MODE_PAUSE)
 
-    def normalize_left_turn_angle(self, angle):
-        # Ensure the angle is within [0, 2π]
-        angle = angle % (2 * np.pi)
+    # def normalize_left_turn_angle(self, angle):
+    #     # Ensure the angle is within [0, 2π]
+    #     angle = angle % (2 * np.pi)
         
-        # If the angle is greater than π, convert it to a negative value representing the equivalent right turn.
-        if angle > np.pi:
-            angle = angle - 2 * np.pi
+    #     # If the angle is greater than π, convert it to a negative value representing the equivalent right turn.
+    #     if angle > np.pi:
+    #         angle = angle - 2 * np.pi
         
-        return angle
+    #     return angle
 
     def exploit(self):
         self.s *= 0
@@ -235,18 +281,57 @@ class create3Driver():
             act = np.nan_to_num(circmean(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), weights=self.act))    
             var = np.nan_to_num(circvar(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), weights=self.act)) 
             max_rew = pot_rew[int(act//(2*np.pi/self.num_head_directions))]
-
+            print(f"act: {math.degrees(act)}, max_rew: {math.degrees(max_rew)}")
             # didn't explore enough
             if (max_rew <= 1e-3):
                 self.explore()
                 return
             
-            fig = plot.figure(2); fig.clf()
+            # fig = plot.figure(2); fig.clf()
+            # ax = fig.add_subplot(projection='polar')
+            # ax.set_theta_zero_location("N")
+            # ax.set_theta_direction(-1)
+            # ax.plot(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), self.act)
+            # title = str(np.rad2deg(act)) + ", " + str(np.rad2deg(var)) + ", " + str(tf.reduce_max(self.act).numpy())
+            # plot.title(title)
+            # plot.pause(.01)
+
+            # Set up the plot
+            fig = plt.figure(2)
+            fig.clf()
             ax = fig.add_subplot(projection='polar')
             ax.set_theta_zero_location("N")
             ax.set_theta_direction(-1)
-            ax.plot(np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False), self.act)
-            title = str(np.rad2deg(act)) + ", " + str(np.rad2deg(var)) + ", " + str(tf.reduce_max(self.act).numpy())
+            
+            # Calculate the circular mean
+            angles = np.linspace(0, 2 * np.pi, self.num_head_directions, endpoint=False)
+            circ_mean_angle = circmean(angles, weights=act)
+
+            # Calculate angles and the circular mean
+            angles = np.linspace(0, np.pi*2, self.num_head_directions, endpoint=False)
+            circ_mean_angle = circmean(angles, weights=self.act)
+
+            # Set up the plot
+            fig = plt.figure(2)
+            fig.clf()
+            ax = fig.add_subplot(projection='polar')
+            ax.set_theta_zero_location("N")
+            ax.set_theta_direction(-1)
+
+            # Plot activation values as a function of angle
+            ax.plot(angles, self.act)
+
+            # Plot an arrow or marker towards the circular mean
+            # You might need to adjust the arrow length or use a fixed value
+            arrow_length = np.max(self.act)  # Example: max activation value for arrow length
+            ax.annotate('', xy=(circ_mean_angle, arrow_length), xytext=(0, 0),
+                        arrowprops=dict(facecolor='red', shrink=0.05))
+
+            # Optionally, set title to include the circular mean angle
+            title = f"Circular Mean: {np.rad2deg(circ_mean_angle):.2f} degrees"
+            plt.title(title)
+            plt.show(block=False)
+            plt.pause(0.01)
 
             #curr_estimate = np.dot(hmap_z, self.pcn.v)
             try:
@@ -260,7 +345,8 @@ class create3Driver():
             # ax.set_ylim(5, -5)
             # ax.set_title("Max firing rate {v}".format(v=tf.math.argmax(self.pcn.v))) #int(100*tf.reduce_max(self.pcn.v).numpy())/100))
             # # plot.pause(0.01)
-           
+
+            #TODO: fix self.turn()
             if self.collided:
                 print("Ow, I hit something :(")
                 self.turn(np.deg2rad(60))
@@ -269,12 +355,18 @@ class create3Driver():
                 return
 
             else:
-                
+                # Andrew's self.turn() accepts the number of degrees we should turn
+                # Ade's self.turn() accepts the absolute heading to which we should turn
                 if abs(act) > np.pi:
                     act = act - np.sign(act)*2*np.pi
-                print('turning')  
-                self.turn(self.normalize_left_turn_angle(-np.deg2rad(np.rad2deg(act) - self.n_index)%(np.pi*2)))
-                print(np.rad2deg(act), self.n_index, np.rad2deg(act) - self.n_index)
+                # print(f"turning towards {math.degrees((-np.deg2rad(np.rad2deg(act) - self.current_degree_heading)%(np.pi*2)))}")  
+                print(f"turning towards (degrees): {np.rad2deg(circ_mean_angle) % 360}")
+                
+                # input("press enter to continue")
+                #time.sleep(10)
+                #self.turn((-np.deg2rad(np.rad2deg(act) - self.current_degree_heading)%(np.pi*2)))
+                self.turn(circ_mean_angle)
+                print(np.rad2deg(act), self.current_degree_heading, np.rad2deg(act) - self.current_degree_heading)
             
 
             for s in range(tau_w):
@@ -356,7 +448,7 @@ class create3Driver():
 
         self.turn(np.random.normal(0, np.deg2rad(30)))
 
-    # dmtp
+    # # dmtp
     # def auto_pilot(self, s_start, currPos):
     #     while not np.allclose(self.goalLocation, [currPos[0], currPos[2]], 0, goal_radius["explore"]):
     #         #currPos = self.robot.getField('translation').getSFVec3f()
@@ -373,7 +465,7 @@ class create3Driver():
     #             theta = tf.math.atan(abs(delta_x), abs(delta_y))
     #             desired = np.pi - theta
 
-    #         self.turn(-(desired - np.deg2rad(self.n_index)))
+    #         self.turn(-(desired - np.deg2rad(self.current_degree_heading)))
             
     #         self.sense()
     #         self.compute()
@@ -383,8 +475,8 @@ class create3Driver():
 
         # self.s /= s_start
         # s_start = 0
-        # #plot.imshow(tf.reduce_max(self.pcn.w_rec, 0))
-        # #plot.show()
+        # plot.imshow(tf.reduce_max(self.pcn.w_rec, 0))
+        # plot.show()
         # self.rcn.newReward(self.pcn, self.context)
 
     def run(self, mode="explore"):
@@ -415,9 +507,12 @@ def main():
 
     # Suppress other libraries' logging if needed
     logging.getLogger('another_library').setLevel(logging.ERROR)
-
+    
     print("Program starting")
     rclpy.init()
+
+    reset_pose_node = SimpleResetPoseClient()
+    reset_pose_node.call_reset_pose()
 
     turning_node = RotateAngleClient()
     driving_node = CmdVelPublisher()
@@ -432,15 +527,21 @@ def main():
     executor_thread = threading.Thread(target=executor.spin, daemon=True)
     executor_thread.start()
 
+    print()
+
     print("waiting for sensors to read")
     while (not sensor_node.get_bump_detection() is not None
             or not sensor_node.get_ground_reward() is not None
-            or not sensor_node.get_scan_data() is not None):
+            or not sensor_node.get_scan_data() is not None
+            or not sensor_node.get_odom_heading() is not None):
         print(f"bump detection detected: {sensor_node.get_bump_detection() is not None}")
         print(f"ground detection detected: {sensor_node.get_ground_reward() is not None}")
         print(f"scan detection detected: {sensor_node.get_scan_data() is not None}")
+        print(f"Heading detected: {sensor_node.get_odom_heading() is not None}")
+        print()
         time.sleep(1)
-    
+    print("ALL SENSORS DETECTED")
+    print()
     print("Initializing Bot")
 
     #bot = create3Driver()

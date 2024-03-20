@@ -66,7 +66,7 @@ def main():
     angle = 1.57  # radians
     max_rotation_speed = 0.5  # some units per second
 
-    print("Starting Turning")
+    # print(f"Starting Turning. Start heading: {}")
     rotate_angle_client.send_goal(angle, max_rotation_speed)
 
     # Wait for the action to complete

@@ -4,11 +4,13 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import LaserScan
 from irobot_create_msgs.msg import HazardDetectionVector, IrIntensityVector
 from irobot_create_msgs.action import RotateAngle
+from irobot_create_msgs.srv import ResetPose
 from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
 import threading
 import time
 import asyncio 
+import math
 
 class CombinedSensorSubscriber(Node):
     def __init__(self):
@@ -21,6 +23,7 @@ class CombinedSensorSubscriber(Node):
         self.bump_detection = False
         self.odom_position = None
         self.odom_orientation = None
+        self.odom_heading_deg = None
 
         self.create_subscription(LaserScan, '/scan', self.scan_callback, qos_profile)
         self.create_subscription(IrIntensityVector, '/cliff_intensity', self.cliff_intensity_callback, qos_profile)
@@ -29,28 +32,6 @@ class CombinedSensorSubscriber(Node):
 
         # Initialize action client
         #self.action_client = ActionClient(self, RotateAngle, '/rotate_angle')
-
-    # async def send_rotate_angle_goal(self, angle, max_rotation_speed):
-    #     goal_msg = RotateAngle.Goal()
-    #     goal_msg.angle = angle
-    #     goal_msg.max_rotation_speed = max_rotation_speed
-
-    #     self.get_logger().info('Sending goal request...')
-    #     send_goal_future = self.action_client.send_goal_async(goal_msg)
-    #     rclpy.spin_until_future_complete(self, send_goal_future)
-    #     goal_handle = send_goal_future.result()
-
-    #     if not goal_handle.accepted:
-    #         self.get_logger().info('Goal rejected :(')
-    #         return
-
-    #     self.get_logger().info('Goal accepted :)')
-
-    #     # Await the result
-    #     get_result_future = goal_handle.get_result_async()
-    #     rclpy.spin_until_future_complete(self, get_result_future)
-    #     result = get_result_future.result().result
-    #     self.get_logger().info(f'Goal result: {result}')
 
     def scan_callback(self, msg):
         with self.lock:
@@ -64,10 +45,41 @@ class CombinedSensorSubscriber(Node):
         with self.lock:
             self.bump_detection = any("bump" in detection.header.frame_id.lower() for detection in msg.detections)
 
+    def quaternion_to_yaw(self, w, x, y, z):
+        """
+        Convert a quaternion into yaw (heading) angle in radians.
+        Parameters:
+            w, x, y, z: Quaternion components
+        Returns:
+            Yaw angle in radians.
+        """
+        yaw = math.atan2(2.0 * (y * z + w * x), w * w - x * x - y * y + z * z)
+
+        return yaw
+
     def odom_callback(self, msg):
-        with self.lock:
-            self.odom_position = (msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z)
-            self.odom_orientation = (msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w)
+        global global_odom_pose_position, global_odom_pose_orientation, global_odom_heading
+        # Update the global variables with the latest odom pose position and orientation
+        global_odom_pose_position = (msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z)
+        global_odom_pose_orientation = (msg.pose.pose.orientation.x, msg.pose.pose.orientation.y, msg.pose.pose.orientation.z, msg.pose.pose.orientation.w)
+
+        # Calculate the heading (yaw) from the quaternion in radians and convert it to degrees
+        w, x, y, z = global_odom_pose_orientation
+        yaw_radians = self.quaternion_to_yaw(w, x, y, z)
+        yaw_degrees = math.degrees(yaw_radians)
+
+        # Normalize the yaw degrees to be within 0 to 360 degrees
+        yaw_degrees_normalized = yaw_degrees % 360
+
+        # Apply the flipping logic
+        if 0 < yaw_degrees_normalized < 180:
+            flipped_yaw_degrees = 360 - yaw_degrees_normalized
+        elif 180 < yaw_degrees_normalized < 360:
+            flipped_yaw_degrees = 360 - yaw_degrees_normalized
+        else:
+            flipped_yaw_degrees = yaw_degrees_normalized  # Keeps 0 and 180 degrees unchanged
+
+        self.odom_heading_deg = flipped_yaw_degrees
 
     # Getter for scan_data
     def get_scan_data(self):
@@ -93,6 +105,10 @@ class CombinedSensorSubscriber(Node):
     def get_odom_orientation(self):
         with self.lock:
             return self.odom_orientation
+    
+    def get_odom_heading(self):
+        with self.lock:
+            return self.odom_heading_deg
 
 def run_node(node):
     rclpy.spin(node)
@@ -109,7 +125,8 @@ def main():
     print('spun up and ready')
 
     while True:
-        print(node.get_bump_detection())
+        print(node.get_odom_heading())
+        time.sleep(0.05)
 
 if __name__ == '__main__':
     main()

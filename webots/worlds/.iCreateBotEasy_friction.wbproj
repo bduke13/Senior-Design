@@ -7,7 +7,7 @@ centralWidgetVisible: 1
 orthographicViewHeight: 1
 textFiles: 0 "controllers/my_controller/my_controller.py"
 consoles: Console:All:All
-renderingDevicePerspectives: Create:display;0;1;0;0
-renderingDevicePerspectives: Create:lefteye;0;0.191667;0;0
-renderingDevicePerspectives: Create:range-finder;1;1.30556;0;0
-renderingDevicePerspectives: Create:righteye;0;0.191667;0;0
+renderingDevicePerspectives: Create:display;1;1;0;0
+renderingDevicePerspectives: Create:lefteye;0;1;0;0
+renderingDevicePerspectives: Create:range-finder;1;32;0;0
+renderingDevicePerspectives: Create:righteye;0;1;0;0
